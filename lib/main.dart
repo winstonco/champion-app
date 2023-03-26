@@ -1,4 +1,86 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:io';
+import 'package:path/path.dart' as path;
+
+Future<http.Response> fetchSummonerData() async {
+  const apiKey = 'RGAPI-a6231a69-afef-4472-9c12-7bbd152d8f1c';
+  const summonerName = 'frostfireftw';
+  const endpointUrl =
+      'https://na1.api.riotgames.com/lol/summoner/v4/summoners/by-name/$summonerName?api_key=$apiKey';
+
+  final response = await http.get(Uri.parse(endpointUrl));
+
+  if (response.statusCode == 200) {
+    // Handle successful response here
+    // print(response.body);
+  } else {
+    // Handle error response here
+    print('Error: ${response.statusCode}');
+  }
+
+  return response;
+}
+
+Future<String> getEncryptedSummonerId() async {
+  final response = await fetchSummonerData();
+
+  if (response.statusCode == 200) {
+    // print(jsonDecode(response.body)['id']);
+    return jsonDecode(response.body)['id'];
+  } else {
+    throw Exception(
+        'Failed to get encrypted summoner ID: ${response.statusCode}');
+  }
+}
+
+Future<void> fetchCurrentGameInfo() async {
+  const apiKey = 'RGAPI-a6231a69-afef-4472-9c12-7bbd152d8f1c';
+  final encryptedId = await getEncryptedSummonerId();
+  var uri = Uri(
+      scheme: 'https',
+      host: 'na1.api.riotgames.com',
+      path: 'lol/spectator/v4/livedata/player/$encryptedId',
+      queryParameters: {
+        'api_key': apiKey,
+      });
+  final res = await http.get(uri, headers: {'X-Riot-Token': apiKey});
+  print(uri.toString());
+  print(res.body);
+}
+
+bool _setSecurity = false;
+
+Future<void> fetchLiveClientData() async {
+  const apiKey = 'RGAPI-a6231a69-afef-4472-9c12-7bbd152d8f1c';
+  final encryptedId = await getEncryptedSummonerId();
+
+  final cwd = Directory.current.path;
+  final certificatePath = path.join(cwd, 'riotgames.pem');
+  print(certificatePath);
+
+  // Create a security context and add the certificate
+  final securityContext = SecurityContext.defaultContext;
+  if (!_setSecurity) {
+    securityContext.setTrustedCertificates(certificatePath);
+    _setSecurity = true;
+  }
+
+  final client = HttpClient(context: securityContext)
+    ..badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
+
+  var uri = Uri(
+      scheme: 'https',
+      host: '127.0.0.1',
+      port: 2999,
+      path: 'liveclientdata/allgamedata');
+  // var uri = Uri.parse('https://127.0.0.1:2999/liveclientdata/allgamedata');
+  final req = await client.getUrl(uri);
+  final res = await req.close();
+  print(await res.transform(utf8.decoder).join());
+}
 
 void main() {
   runApp(const MyApp());
@@ -47,7 +129,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   int _counter = 0;
 
   void _incrementCounter() {
@@ -102,6 +184,15 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            const TextButton(
+                onPressed: fetchSummonerData, child: Text('fetch data')),
+            const TextButton(
+                onPressed: getEncryptedSummonerId, child: Text('get summ id')),
+            const TextButton(
+                onPressed: fetchCurrentGameInfo, child: Text('get game data')),
+            const TextButton(
+                onPressed: fetchLiveClientData,
+                child: Text('get live client data')),
           ],
         ),
       ),
